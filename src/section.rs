@@ -7,19 +7,28 @@ pub fn extract_section(content: &str, heading: &str) -> Option<String> {
     let normalized_content = content.replace("\r\n", "\n");
     let lines: Vec<&str> = normalized_content.lines().collect();
     let start = lines.iter().position(|line| {
-        line.strip_prefix("## ")
+        strip_heading_prefix(line)
             .is_some_and(|value| value.trim().eq_ignore_ascii_case(&target_heading))
     })?;
 
     let mut end = lines.len();
     for (index, line) in lines.iter().enumerate().skip(start + 1) {
-        if line.starts_with("## ") {
+        if is_heading(line) {
             end = index;
             break;
         }
     }
 
     Some(lines[start + 1..end].join("\n").trim().to_string())
+}
+
+fn strip_heading_prefix(line: &str) -> Option<&str> {
+    line.strip_prefix("## ")
+        .or_else(|| line.strip_prefix("# "))
+}
+
+fn is_heading(line: &str) -> bool {
+    line.starts_with("## ") || line.starts_with("# ")
 }
 
 fn normalize_heading_alias(heading: &str) -> String {
@@ -73,5 +82,40 @@ mod tests {
         let content = "## Verification\n\nPass";
         let extracted = extract_section(content, "Verification");
         assert_eq!(extracted.as_deref(), Some("Pass"));
+    }
+
+    #[test]
+    fn extracts_h1_section() {
+        let content = "# Summary\n\n- done\n- shipped\n\n# Context\n\nmore stuff";
+        let extracted = extract_section(content, "Summary");
+        assert_eq!(extracted.as_deref(), Some("- done\n- shipped"));
+    }
+
+    #[test]
+    fn extracts_h1_section_at_end_of_file() {
+        let content = "# Context\n\nsome context\n\n# Summary\n\nfinal notes";
+        let extracted = extract_section(content, "Summary");
+        assert_eq!(extracted.as_deref(), Some("final notes"));
+    }
+
+    #[test]
+    fn h1_issues_alias_works() {
+        let content = "# Issues / Unknowns\n\n- blocked on API";
+        let extracted = extract_section(content, "Issues");
+        assert_eq!(extracted.as_deref(), Some("- blocked on API"));
+    }
+
+    #[test]
+    fn h2_boundary_stops_h1_section() {
+        let content = "# Summary\n\nstuff\n\n## Details\n\nmore";
+        let extracted = extract_section(content, "Summary");
+        assert_eq!(extracted.as_deref(), Some("stuff"));
+    }
+
+    #[test]
+    fn h1_boundary_stops_h2_section() {
+        let content = "## Summary\n\nstuff\n\n# Next\n\nmore";
+        let extracted = extract_section(content, "Summary");
+        assert_eq!(extracted.as_deref(), Some("stuff"));
     }
 }
