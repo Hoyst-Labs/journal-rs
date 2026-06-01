@@ -10,6 +10,7 @@ The tool is designed to be used by both humans and LLM agents to quickly review 
 - Lists entries grouped by date
 - Extracts specific heading sections from entries (Summary, Issues / Unknowns, Next Actions, etc.)
 - Filters entries by date, timestamp, time ranges, and content keywords
+- Ranked keyword search with phrase matching, proximity scoring, and recency decay
 - Zero external dependencies — pure Rust, standard library only
 
 ## Skills  — Skills and Tools Are First-Class Citizens
@@ -41,10 +42,10 @@ For coding related changes only —
 
 **Required Structure**
 
-### Summary
+# Summary
 Summary of everything for a single / quick lookup.
 
-### Context
+# Context
 
 What the agent believes the current situation is.
 
@@ -52,10 +53,10 @@ What the agent believes the current situation is.
 * Constraints / assumptions
 * What changed since last pass
 
-### References
+# References
 Reference to original requirements, plan, tasks (if applicable)
 
-### Results
+# Results
 
 What happened as a result of the actions.
 
@@ -64,7 +65,7 @@ What happened as a result of the actions.
 * Observed behavior
 * Unexpected side effects
 
-### Verification
+# Verification
 
 Did it work?
 
@@ -73,7 +74,7 @@ Did it work?
 * Manual validation notes
 * Pass / Fail Status
 
-### Artifacts
+# Artifacts
 
 Anything produced that future passes need.
 
@@ -82,7 +83,7 @@ Anything produced that future passes need.
 * Generated outputs
 * Links or references
 
-### Issues / Unknowns
+# Issues / Unknowns
 
 What is unclear or blocking.
 
@@ -90,7 +91,7 @@ What is unclear or blocking.
 * Ambiguities
 * Risks
 
-### Next Actions
+# Next Actions
 
 What should happen next.
 
@@ -98,7 +99,7 @@ What should happen next.
 * Fallback if that fails
 * Optional improvements
 
-### Delta (Optional)
+# Delta (Optional)
 
 What changed vs last pass.
 
@@ -109,7 +110,7 @@ What changed vs last pass.
 
 ## CLI Interface
 
-### Current Commands
+### Commands
 
 ```
 journal                                  # List all entries grouped by date
@@ -117,25 +118,43 @@ journal help                             # Show help
 journal --summary                        # Print ## Summary from each entry
 journal --full --files 2026-04-04-1054   # Print full content of matching entries
 journal files 2026-04-04-1054            # List files matching a date/timestamp
-```
-
-### Planned Commands
-
-```
+journal --latest 3                       # Show the 3 most recent entry summaries
+journal --latest 5 --full                # Show full content of the 5 most recent entries
 journal --type "Summary"                 # Extract a specific heading section
 journal --type "Issues"                  # Matches "Issues / Unknowns" heading
 journal --since "2026-04-26"             # Entries since a date
-journal --between "2026-04-01" "2026-04-30"          # Entries in a date range
-journal --between "2026-04-01-0900" "2026-04-01-1700" # Entries in a time range
-journal --filter "auth|login|session"    # Keyword filter (pipe-delimited, any match)
-journal --type "Next Actions" --since "2026-04-26" --filter "deploy"  # Combined
+journal --between "2026-04-01" "2026-04-30"            # Entries in a date range
+journal --between "2026-04-01-0900" "2026-04-01-1700"  # Entries in a time range
+journal --filter "auth|login|session"    # Content filter (pipe-delimited, any match)
+journal --search "notes for students"    # Ranked keyword search (scored by relevance + recency)
+journal --search "recent auth changes"   # Time-bias keywords amplify recency scoring
+journal search "deploy fixes"            # Positional command alias for --search
+journal --search "deploy" --since 2026-04-01           # Combine search with date filters
+journal --search "migration" --latest 5                # Cap search results
+journal --type "Next Actions" --since "2026-04-26" --filter "deploy"  # Combined filters
 ```
+
+### Mutual Exclusions
+
+- `--summary` and `--type` cannot be combined
+- `--since` and `--between` cannot be combined
+- `--search` and `--filter` cannot be combined
 
 ## Build and Architecture
 
 - Language: Rust (edition 2024)
-- Single binary: `src/main.rs` (to be refactored into `lib.rs` + modules per rust-app skill)
+- Thin binary `src/main.rs` + library `src/lib.rs` with modules per rust-app skill
+- Modules: `cli.rs`, `model.rs`, `journal.rs`, `query.rs`, `section.rs`, `render.rs`, `help.rs`, `search/` (submodule)
 - No external crate dependencies
 - Journal discovery: `.journal/` preferred over `journal/`
 - File naming convention: `YYYY-MM-DD-HHmm-description.md`
 - Sections are identified by `## Heading` lines in Markdown
+
+### Search Module (`src/search/`)
+
+The search submodule implements scored keyword search:
+
+- `tokenize.rs` — stop word removal, light plural normalization, tokenization
+- `score.rs` — phrase matching, proximity (sliding window), term order, frequency scoring
+- `recency.rs` — exponential decay with 60-day half-life, adaptive blending, filename timestamp parsing
+- `time_bias.rs` — detects "recent"/"latest"/"newest"/"old"/"older"/"earliest" modifiers in queries

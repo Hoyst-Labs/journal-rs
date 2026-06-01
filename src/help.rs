@@ -8,6 +8,7 @@ Options:
   --since <value>              Include only files with prefix >= value.
   --between <start> <end>      Include only files with start <= prefix <= end.
   --filter <term|term|...>     Include files whose content matches any case-insensitive term.
+  --search <query>             Ranked keyword search across entry summaries (scored by relevance + recency).
   --latest <count>             Show the <count> most recent entries (defaults to summary display).
   --help, -h                   Show this help message.
   help                         Show this help message.
@@ -15,6 +16,7 @@ Options:
 Notes:
   --summary and --type are mutually exclusive.
   --since and --between are mutually exclusive.
+  --search and --filter are mutually exclusive.
 
 Journal Discovery:
   The tool looks only in the current working directory for:
@@ -33,5 +35,8 @@ Examples:
   journal --full --files 2026-04-04-1054
   journal --type \"Issues\" --since 2026-04-26
   journal --type \"Next Actions\" --between 2026-04-01 2026-04-30 --filter \"deploy|release\"
+  journal --search \"notes for students\"
+  journal --search \"recent auth changes\" --since 2026-04-01
+  journal search \"deploy fixes\"
   journal files 2026-04-04-1054
   journal help";

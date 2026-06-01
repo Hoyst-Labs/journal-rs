@@ -7,7 +7,10 @@ mod journal;
 mod model;
 mod query;
 mod render;
+pub mod search;
 mod section;
+
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use cli::parse_args;
 use help::HELP_TEXT;
@@ -17,7 +20,8 @@ use journal::{
 };
 use model::DisplayMode;
 use query::{EntryContent, MatchedEntry, apply_filters};
-use render::{format_file_blocks, format_grouped_files};
+use render::{format_file_blocks, format_grouped_files, format_search_results};
+use search::search_entries;
 use section::extract_section;
 
 pub fn run(args: &[String]) -> Result<String, String> {
@@ -38,6 +42,22 @@ fn execute_from(args: &[String], current_dir: &Path) -> Result<String, String> {
 
     let files = list_journal_files(&journal_dir);
     let mut entries = apply_filters(files, &params, &journal_dir);
+
+    if params.display_mode == DisplayMode::Search {
+        let query = params.search_query.as_deref().unwrap_or("");
+        let now_unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let filenames: Vec<String> = entries.iter().map(|e| e.file_name.clone()).collect();
+        let mut results = search_entries(&filenames, &journal_dir, query, now_unix);
+
+        let limit = params.latest.unwrap_or(10);
+        results.truncate(limit);
+
+        return Ok(format_search_results(&results));
+    }
 
     if let Some(count) = params.latest {
         entries.truncate(count);
@@ -88,6 +108,7 @@ fn execute_from(args: &[String], current_dir: &Path) -> Result<String, String> {
         }
         DisplayMode::Summary => format_section_blocks(&entries, &journal_dir, "Summary"),
         DisplayMode::TypeSection(heading) => format_section_blocks(&entries, &journal_dir, heading),
+        DisplayMode::Search => unreachable!(),
     };
 
     Ok(output)
@@ -272,6 +293,246 @@ mod tests {
         assert!(output.contains("Third entry summary"));
         assert!(output.contains("2026-05-04-1200-fourth.md"));
         assert!(output.contains("Fourth entry summary"));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_returns_ranked_results() {
+        let temp_dir = create_temp_dir("search-basic");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        fs::write(
+            journal_dir.join("2026-05-04-1200-notes.md"),
+            "# Entry\n\n## Summary\n\nAdded notes that the owner can send to students or instructors.\n",
+        )
+        .unwrap();
+        fs::write(
+            journal_dir.join("2026-05-03-1000-login.md"),
+            "# Entry\n\n## Summary\n\nStudents can now log in to the platform.\n",
+        )
+        .unwrap();
+
+        let args = vec!["--search".to_string(), "notes for students".to_string()];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        assert!(output.contains("2026-05-04-1200-notes.md"));
+        assert!(output.contains("2026-05-03-1000-login.md"));
+        // Notes entry should appear first (higher score)
+        let notes_pos = output.find("2026-05-04-1200-notes.md").unwrap();
+        let login_pos = output.find("2026-05-03-1000-login.md").unwrap();
+        assert!(notes_pos < login_pos);
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_combined_with_since_filters_first() {
+        let temp_dir = create_temp_dir("search-since");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        fs::write(
+            journal_dir.join("2026-04-01-0900-old-deploy.md"),
+            "# Entry\n\n## Summary\n\nDeployed authentication service.\n",
+        )
+        .unwrap();
+        fs::write(
+            journal_dir.join("2026-05-15-1000-new-deploy.md"),
+            "# Entry\n\n## Summary\n\nDeployed authentication updates.\n",
+        )
+        .unwrap();
+
+        let args = vec![
+            "--search".to_string(),
+            "deploy authentication".to_string(),
+            "--since".to_string(),
+            "2026-05-01".to_string(),
+        ];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        assert!(output.contains("2026-05-15-1000-new-deploy.md"));
+        assert!(!output.contains("2026-04-01-0900-old-deploy.md"));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_combined_with_between_filters_range() {
+        let temp_dir = create_temp_dir("search-between");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        fs::write(
+            journal_dir.join("2026-04-01-0900-before.md"),
+            "# Entry\n\n## Summary\n\nSetup database migrations.\n",
+        )
+        .unwrap();
+        fs::write(
+            journal_dir.join("2026-04-15-1000-in-range.md"),
+            "# Entry\n\n## Summary\n\nRan database migrations for users table.\n",
+        )
+        .unwrap();
+        fs::write(
+            journal_dir.join("2026-05-01-1000-after.md"),
+            "# Entry\n\n## Summary\n\nDatabase migration cleanup.\n",
+        )
+        .unwrap();
+
+        let args = vec![
+            "--search".to_string(),
+            "database migration".to_string(),
+            "--between".to_string(),
+            "2026-04-10".to_string(),
+            "2026-04-20".to_string(),
+        ];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        assert!(output.contains("2026-04-15-1000-in-range.md"));
+        assert!(!output.contains("2026-04-01-0900-before.md"));
+        assert!(!output.contains("2026-05-01-1000-after.md"));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_and_filter_mutual_exclusion() {
+        let temp_dir = create_temp_dir("search-filter");
+        fs::create_dir(temp_dir.join(".journal")).unwrap();
+
+        let args = vec![
+            "--search".to_string(),
+            "deploy".to_string(),
+            "--filter".to_string(),
+            "deploy".to_string(),
+        ];
+        let error = execute_from(&args, &temp_dir).unwrap_err();
+
+        assert!(error.contains("--search and --filter cannot be used together"));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_with_latest_caps_results() {
+        let temp_dir = create_temp_dir("search-latest");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        for i in 1..=5 {
+            fs::write(
+                journal_dir.join(format!("2026-05-0{i}-1000-entry{i}.md")),
+                format!("# Entry\n\n## Summary\n\nDeploy iteration {i} to production.\n"),
+            )
+            .unwrap();
+        }
+
+        let args = vec![
+            "--search".to_string(),
+            "deploy production".to_string(),
+            "--latest".to_string(),
+            "3".to_string(),
+        ];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        let result_count = output.matches("[").count();
+        assert_eq!(result_count, 3);
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_all_stop_words_returns_no_matches() {
+        let temp_dir = create_temp_dir("search-stopwords");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        fs::write(
+            journal_dir.join("2026-05-01-1000-test.md"),
+            "# Entry\n\n## Summary\n\nSome content here.\n",
+        )
+        .unwrap();
+
+        let args = vec!["--search".to_string(), "the and or".to_string()];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        assert!(output.contains("No matching entries found."));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_time_bias_recent_strips_keyword() {
+        let temp_dir = create_temp_dir("search-bias");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        fs::write(
+            journal_dir.join("2026-05-30-1000-auth.md"),
+            "# Entry\n\n## Summary\n\nUpdated authentication flow.\n",
+        )
+        .unwrap();
+
+        let args = vec!["--search".to_string(), "recent authentication".to_string()];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        // Should match on "authentication" (not "recent")
+        assert!(output.contains("2026-05-30-1000-auth.md"));
+        assert!(output.contains("authentication"));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_no_summary_entries_returns_no_matches() {
+        let temp_dir = create_temp_dir("search-nosummary");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        fs::write(
+            journal_dir.join("2026-05-01-1000-nosummary.md"),
+            "# Entry\n\n## Context\n\nJust context here.\n",
+        )
+        .unwrap();
+
+        let args = vec!["--search".to_string(), "context".to_string()];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        assert!(output.contains("No matching entries found."));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_without_value_returns_error() {
+        let temp_dir = create_temp_dir("search-novalue");
+        fs::create_dir(temp_dir.join(".journal")).unwrap();
+
+        let args = vec!["--search".to_string()];
+        let error = execute_from(&args, &temp_dir).unwrap_err();
+
+        assert!(error.contains("--search requires a query string"));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn search_positional_command_works() {
+        let temp_dir = create_temp_dir("search-positional");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        fs::write(
+            journal_dir.join("2026-05-01-1000-deploy.md"),
+            "# Entry\n\n## Summary\n\nDeployed the service to production.\n",
+        )
+        .unwrap();
+
+        let args = vec!["search".to_string(), "deploy production".to_string()];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        assert!(output.contains("2026-05-01-1000-deploy.md"));
 
         fs::remove_dir_all(temp_dir).unwrap();
     }

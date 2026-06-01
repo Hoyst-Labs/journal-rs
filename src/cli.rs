@@ -18,6 +18,15 @@ pub fn parse_args(args: &[String]) -> Result<QueryParams, String> {
     let mut type_heading: Option<String> = None;
     let mut params = QueryParams::default();
 
+    if positional_command == Some("search") {
+        let query = args
+            .get(1)
+            .filter(|value| !value.starts_with("--"))
+            .cloned()
+            .ok_or_else(|| "--search requires a query string.".to_string())?;
+        params.search_query = Some(query);
+    }
+
     if matches!(positional_command, Some("files" | "full")) {
         params.files_query = args
             .get(1)
@@ -27,7 +36,7 @@ pub fn parse_args(args: &[String]) -> Result<QueryParams, String> {
 
     let has_known_command = matches!(
         positional_command,
-        Some("help" | "summary" | "full" | "files")
+        Some("help" | "summary" | "full" | "files" | "search")
     );
     let mut index = if has_known_command { 1 } else { 0 };
 
@@ -122,6 +131,15 @@ pub fn parse_args(args: &[String]) -> Result<QueryParams, String> {
                 params.latest = Some(count);
                 index += 2;
             }
+            "--search" => {
+                let query = args
+                    .get(index + 1)
+                    .filter(|value| !value.starts_with("--"))
+                    .cloned()
+                    .ok_or_else(|| "--search requires a query string.".to_string())?;
+                params.search_query = Some(query);
+                index += 2;
+            }
             token if token.starts_with("--") => {
                 return Err(format!("Unknown option: {token}"));
             }
@@ -143,6 +161,10 @@ pub fn parse_args(args: &[String]) -> Result<QueryParams, String> {
         return Err("Cannot use --summary with --type. Use one display selector.".to_string());
     }
 
+    if params.search_query.is_some() && params.filter_terms.is_some() {
+        return Err("--search and --filter cannot be used together.".to_string());
+    }
+
     if params.since.is_some() && params.between.is_some() {
         return Err("Cannot use --since with --between.".to_string());
     }
@@ -153,7 +175,9 @@ pub fn parse_args(args: &[String]) -> Result<QueryParams, String> {
         }
     }
 
-    params.display_mode = if let Some(heading) = type_heading {
+    params.display_mode = if params.search_query.is_some() {
+        DisplayMode::Search
+    } else if let Some(heading) = type_heading {
         DisplayMode::TypeSection(heading)
     } else if summary_requested {
         DisplayMode::Summary

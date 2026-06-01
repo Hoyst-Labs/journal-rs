@@ -4,6 +4,7 @@ pub enum DisplayMode {
     Summary,
     TypeSection(String),
     Full,
+    Search,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,6 +15,7 @@ pub struct QueryParams {
     pub since: Option<String>,
     pub between: Option<(String, String)>,
     pub filter_terms: Option<Vec<String>>,
+    pub search_query: Option<String>,
     pub latest: Option<usize>,
 }
 
@@ -26,6 +28,7 @@ impl Default for QueryParams {
             since: None,
             between: None,
             filter_terms: None,
+            search_query: None,
             latest: None,
         }
     }
