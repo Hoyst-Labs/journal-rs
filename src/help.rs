@@ -8,6 +8,7 @@ Options:
   --since <value>              Include only files with prefix >= value.
   --between <start> <end>      Include only files with start <= prefix <= end.
   --filter <term|term|...>     Include files whose content matches any case-insensitive term.
+  --latest <count>             Show the <count> most recent entries (defaults to summary display).
   --help, -h                   Show this help message.
   help                         Show this help message.
 
@@ -26,6 +27,8 @@ Journal Discovery:
 Examples:
   journal
   journal --summary
+  journal --latest 3
+  journal --latest 5 --full
   journal --type \"Next Actions\"
   journal --full --files 2026-04-04-1054
   journal --type \"Issues\" --since 2026-04-26

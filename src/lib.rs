@@ -37,9 +37,19 @@ fn execute_from(args: &[String], current_dir: &Path) -> Result<String, String> {
     };
 
     let files = list_journal_files(&journal_dir);
-    let entries = apply_filters(files, &params, &journal_dir);
+    let mut entries = apply_filters(files, &params, &journal_dir);
 
-    let output = match &params.display_mode {
+    if let Some(count) = params.latest {
+        entries.truncate(count);
+    }
+
+    let display_mode = if params.latest.is_some() && params.display_mode == DisplayMode::List {
+        &DisplayMode::Summary
+    } else {
+        &params.display_mode
+    };
+
+    let output = match display_mode {
         DisplayMode::List => {
             let names = entries
                 .iter()
@@ -222,6 +232,46 @@ mod tests {
         assert!(output.contains("Deploy checklist"));
         assert!(output.contains("2026-05-01-0910-bad.md"));
         assert!(output.contains("Failed to read"));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn latest_shows_only_n_most_recent_entries_with_summary() {
+        let temp_dir = create_temp_dir("latest");
+        let journal_dir = temp_dir.join(".journal");
+        fs::create_dir(&journal_dir).unwrap();
+
+        fs::write(
+            journal_dir.join("2026-05-01-0900-first.md"),
+            "# Entry\n\n## Summary\n\nFirst entry summary\n",
+        )
+        .unwrap();
+        fs::write(
+            journal_dir.join("2026-05-02-1000-second.md"),
+            "# Entry\n\n## Summary\n\nSecond entry summary\n",
+        )
+        .unwrap();
+        fs::write(
+            journal_dir.join("2026-05-03-1100-third.md"),
+            "# Entry\n\n## Summary\n\nThird entry summary\n",
+        )
+        .unwrap();
+        fs::write(
+            journal_dir.join("2026-05-04-1200-fourth.md"),
+            "# Entry\n\n## Summary\n\nFourth entry summary\n",
+        )
+        .unwrap();
+
+        let args = vec!["--latest".to_string(), "2".to_string()];
+        let output = execute_from(&args, &temp_dir).unwrap();
+
+        assert!(!output.contains("First entry summary"));
+        assert!(!output.contains("Second entry summary"));
+        assert!(output.contains("2026-05-03-1100-third.md"));
+        assert!(output.contains("Third entry summary"));
+        assert!(output.contains("2026-05-04-1200-fourth.md"));
+        assert!(output.contains("Fourth entry summary"));
 
         fs::remove_dir_all(temp_dir).unwrap();
     }

@@ -14,6 +14,7 @@ pub struct QueryParams {
     pub since: Option<String>,
     pub between: Option<(String, String)>,
     pub filter_terms: Option<Vec<String>>,
+    pub latest: Option<usize>,
 }
 
 impl Default for QueryParams {
@@ -25,6 +26,7 @@ impl Default for QueryParams {
             since: None,
             between: None,
             filter_terms: None,
+            latest: None,
         }
     }
 }

@@ -107,6 +107,21 @@ pub fn parse_args(args: &[String]) -> Result<QueryParams, String> {
                 params.filter_terms = Some(terms);
                 index += 2;
             }
+            "--latest" => {
+                let value = args
+                    .get(index + 1)
+                    .filter(|candidate| !candidate.starts_with("--"))
+                    .cloned()
+                    .ok_or_else(|| "--latest requires a positive integer.".to_string())?;
+                let count: usize = value
+                    .parse()
+                    .map_err(|_| "--latest requires a positive integer.".to_string())?;
+                if count == 0 {
+                    return Err("--latest requires a positive integer.".to_string());
+                }
+                params.latest = Some(count);
+                index += 2;
+            }
             token if token.starts_with("--") => {
                 return Err(format!("Unknown option: {token}"));
             }
@@ -264,5 +279,24 @@ mod tests {
             "2026-04-04".to_string(),
         ];
         assert!(parse_args(&args).is_ok());
+    }
+
+    #[test]
+    fn parses_latest_with_valid_count() {
+        let args = vec!["--latest".to_string(), "5".to_string()];
+        let params = parse_args(&args).unwrap();
+        assert_eq!(params.latest, Some(5));
+    }
+
+    #[test]
+    fn rejects_latest_with_zero() {
+        let args = vec!["--latest".to_string(), "0".to_string()];
+        assert!(parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn rejects_latest_without_value() {
+        let args = vec!["--latest".to_string()];
+        assert!(parse_args(&args).is_err());
     }
 }
