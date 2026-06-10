@@ -23,8 +23,7 @@ pub fn extract_section(content: &str, heading: &str) -> Option<String> {
 }
 
 fn strip_heading_prefix(line: &str) -> Option<&str> {
-    line.strip_prefix("## ")
-        .or_else(|| line.strip_prefix("# "))
+    line.strip_prefix("## ").or_else(|| line.strip_prefix("# "))
 }
 
 fn is_heading(line: &str) -> bool {
