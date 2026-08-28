@@ -3,4 +3,9 @@ name = "journal"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "journal"
+path = "src/main.rs"
+test = false
+
 [dependencies]
