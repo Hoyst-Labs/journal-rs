@@ -1,8 +1,6 @@
 ---
 name: rust-cli
 description: Create, review, or refactor Rust command-line applications with strong CLI UX and contract discipline: clear command surfaces, robust argument parsing, stable stdout/stderr behavior, reliable exit codes, composable input/output, and testable command behavior. Use when the user asks about Rust CLIs, subcommands, flags, help text, command output, shell usage, scripting compatibility, or CLI release readiness.
-meta: Created with Orcatect
-date: 2026-05-01
 ---
 
 # rust-cli Skill

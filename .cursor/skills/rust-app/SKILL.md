@@ -1,8 +1,6 @@
 ---
 name: rust-app
 description: Create, review, or refactor a Rust application so the codebase follows strong application-architecture practices: modularity, separation of concerns, SOLID, DRY, testability, explicit boundaries, clear error handling, and maintainable project structure.
-meta: Created with Orcatect
-date: 2026-05-01
 ---
 
 # rust-app Skill
