@@ -116,21 +116,36 @@ Immediate next steps.
 
 ```
 src/
-├── main.rs          # Entry point (args, exit codes)
-├── lib.rs           # Orchestration pipeline
-├── cli.rs           # Argument parsing → QueryParams
-├── model.rs         # QueryParams, DisplayMode types
-├── journal.rs       # Discovery, file listing, date validation
-├── query.rs         # Filter pipeline (files, since, between, content)
-├── section.rs       # Markdown ## section extraction
-├── render.rs        # Output formatting
-├── help.rs          # Help text
-└── search/
-    ├── mod.rs       # Search orchestrator
-    ├── tokenize.rs  # Stop words, normalization, tokenization
-    ├── score.rs     # Phrase/proximity/order/frequency scoring
-    ├── recency.rs   # Exponential decay, timestamp parsing
-    └── time_bias.rs # Time-bias keyword detection
+├── main.rs                 # Process boundary: stdout, stderr, exit code
+├── lib.rs                  # Intentional crate surface and adapter composition
+├── app.rs                  # Dependency-injected query execution pipeline
+├── error.rs                # Typed usage, application, and store errors
+├── ports.rs                # JournalStore and Clock interfaces
+├── adapters/
+│   ├── fs_journal.rs       # Current-directory discovery and contained file reads
+│   └── system_clock.rs     # Production Unix-time source
+├── cli/
+│   ├── parse.rs            # Arguments and aliases → typed Command
+│   ├── help.rs             # Stable baked-in help text
+│   └── exit.rs             # stdout/stderr and exit-status mapping
+├── domain/
+│   ├── entry.rs            # Safe entry names and metadata
+│   ├── filename.rs         # Date/timestamp parsing and comparisons
+│   ├── query.rs            # Typed selection and view models
+│   ├── section.rs          # Markdown H1/H2 section extraction
+│   └── search/
+│       ├── mod.rs          # Pure in-memory ranking
+│       ├── tokenize.rs     # Stop words and normalization
+│       ├── score.rs        # Phrase/proximity/order/frequency scoring
+│       ├── recency.rs      # Exponential decay and timestamp conversion
+│       └── time_bias.rs    # Recent/old query modifiers
+└── output/
+    └── text.rs             # Stable human-readable rendering
+
+tests/
+├── application.rs          # Fake-store and fixed-clock application tests
+├── cli_contract.rs         # Process-level stdout/stderr/exit tests
+└── fixtures/journal/       # Deterministic CLI fixtures
 ```
 
 ## License
